@@ -24,23 +24,23 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y crudini
 crudini --set /etc/default/grub "" GRUB_CMDLINE_LINUX '"net.ifnames=0 biosdevname=0"'
 update-grub
 
-cat <<- EOF > /etc/network/interfaces
-auto lo0
-iface lo inet loopback
-
-auto $INTERNET_INTERFACE_NAME
-iface $INTERNET_INTERFACE_NAME inet dhcp
-
-auto $MANAGEMENT_INTERFACE_NAME
-iface $MANAGEMENT_INTERFACE_NAME inet static
-  address $CONTROLLER_IP
-  netmask $CONTROLLER_NETMASK
-  dns-nameservers $CONTROLLER_NAMESERVERS
-
-auto $PROVIDER_INTERFACE_NAME
-iface $PROVIDER_INTERFACE_NAME inet manual
-  up ip link set dev $PROVIDER_INTERFACE_NAME up
-  down ip link set dev $PROVIDER_INTERFACE_NAME down
+cat <<- EOF > /etc/netplan/50-cloud-init.yaml
+network:
+    ethernets:
+        $INTERNET_INTERFACE_NAME:
+            match:
+                name: "eth0"
+            set-name: "$INTERNET_INTERFACE_NAME"
+            dhcp4: true
+            addresses:
+                - $CONTROLLER_IP/$CONTROLLER_NETMASK_LEN:
+                    label: "$MANAGEMENT_INTERFACE_NAME"
+            nameservers:
+                addresses: [$CONTROLLER_NAMESERVERS]
+        $PROVIDER_INTERFACE_NAME:
+            dhcp4: false
+    version: 2
+    renderer: networkd
 EOF
 
 pvcreate /dev/sdc

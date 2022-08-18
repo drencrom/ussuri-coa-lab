@@ -4,7 +4,7 @@
 servers=[
   {
     :hostname => "coa-lab",
-    :box => "ubuntu/xenial64",
+    :box => "ubuntu/focal64",
     :ram => 8192,
     :cpu => 2,
     :script => "bash /vagrant/virtualbox-guest-setup.sh"

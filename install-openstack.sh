@@ -28,14 +28,13 @@ export DEBIAN_FRONTEND=noninteractive
 echo "Starting installation of OpenStack Packages for Ubuntu"
 apt-get update
 apt-get install -y software-properties-common
-add-apt-repository -y cloud-archive:pike
 apt update -y && apt dist-upgrade -y
-apt install -y python-openstackclient
+apt install -y python3-openstackclient
 
 # from SQL Database for Ubuntu https://docs.openstack.org/install-guide/environment-sql-database-ubuntu.html
 
 echo "Starting installation of SQL Database for Ubuntu"
-apt install -y mariadb-server python-pymysql
+apt install -y mariadb-server python3-pymysql
 
 cat <<- EOF > /etc/mysql/mariadb.conf.d/99-openstack.cnf
 [mysqld]
@@ -70,7 +69,7 @@ rabbitmqctl set_permissions openstack ".*" ".*" ".*"
 
 echo "Starting installation of Memcached for Ubuntu"
 
-apt install -y memcached python-memcache rpl
+apt install -y memcached python3-memcache rpl
 rpl "127.0.0.1" "$CONTROLLER_IP" /etc/memcached.conf
 service memcached restart
 
@@ -92,7 +91,7 @@ crudini --set /etc/default/etcd "" ETCD_LISTEN_CLIENT_URLS "http://$CONTROLLER_I
 systemctl enable etcd
 systemctl start etcd
 
-# from Keystone Install and Configure on Ubuntu https://docs.openstack.org/keystone/pike/install/keystone-install-ubuntu.html
+# from Keystone Install and Configure on Ubuntu https://docs.openstack.org/keystone/ussuri/install/keystone-install-ubuntu.html
 
 echo "Starting installation of Keystone on Ubuntu"
 
@@ -102,13 +101,14 @@ GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'localhost' IDENTIFIED BY '$KEY
 GRANT ALL PRIVILEGES ON keystone.* TO 'keystone'@'%' IDENTIFIED BY '$KEYSTONE_DBPASS';
 EOF
 
-apt install -y keystone apache2 libapache2-mod-wsgi
+apt install -y keystone 
 crudini --set /etc/keystone/keystone.conf database connection "mysql+pymysql://keystone:$KEYSTONE_DBPASS@$CONTROLLER_HOSTNAME/keystone"
 crudini --set /etc/keystone/keystone.conf token provider fernet
 su -s /bin/sh -c "keystone-manage db_sync" keystone
 keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
 keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
 keystone-manage bootstrap --bootstrap-password $ADMIN_PASS --bootstrap-admin-url http://$CONTROLLER_HOSTNAME:35357/v3/ --bootstrap-internal-url http://$CONTROLLER_HOSTNAME:5000/v3/ --bootstrap-public-url http://$CONTROLLER_HOSTNAME:5000/v3/ --bootstrap-region-id RegionOne
+service apache2 restart
 
 cat <<- EOF >> admin-openrc
 #! /bin/sh
@@ -117,12 +117,12 @@ export OS_PASSWORD=$ADMIN_PASS
 export OS_PROJECT_NAME=admin
 export OS_USER_DOMAIN_NAME=Default
 export OS_PROJECT_DOMAIN_NAME=Default
-export OS_AUTH_URL=http://$CONTROLLER_HOSTNAME:35357/v3
+export OS_AUTH_URL=http://$CONTROLLER_HOSTNAME:5000/v3
 export OS_IDENTITY_API_VERSION=3
 EOF
 chmod 644 admin-openrc
 
-# from Create a domain, projects, users and roles https://docs.openstack.org/keystone/pike/install/keystone-users-ubuntu.html
+# from Create a domain, projects, users and roles https://docs.openstack.org/keystone/ussuri/install/keystone-users-ubuntu.html
 source admin-openrc
 openstack project create --domain default --description "Service Project" service
 openstack project create --domain default --description "Demo Project" demo
@@ -142,7 +142,7 @@ export OS_IDENTITY_API_VERSION=3
 EOF
 chmod 644 demo-openrc
 
-# from Install and Configure Glance (Ubuntu) https://docs.openstack.org/glance/pike/install/install-ubuntu.html
+# from Install and Configure Glance (Ubuntu) https://docs.openstack.org/glance/ussuri/install/install-ubuntu.html
 
 echo "Starting installation of Glance on Ubuntu"
 
@@ -163,8 +163,8 @@ openstack endpoint create --region RegionOne image admin http://$CONTROLLER_HOST
 apt install -y glance
 
 crudini --set /etc/glance/glance-api.conf database connection mysql+pymysql://glance:$GLANCE_DBPASS@$CONTROLLER_HOSTNAME/glance
-crudini --set /etc/glance/glance-api.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/glance/glance-api.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/glance/glance-api.conf keystone_authtoken www_authenticate_uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/glance/glance-api.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/glance/glance-api.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/glance/glance-api.conf keystone_authtoken auth_type password
 crudini --set /etc/glance/glance-api.conf keystone_authtoken project_domain_name default
@@ -177,30 +177,52 @@ crudini --set /etc/glance/glance-api.conf glance_store stores "file,http"
 crudini --set /etc/glance/glance-api.conf glance_store default_store file
 crudini --set /etc/glance/glance-api.conf glance_store filesystem_store_datadir /var/lib/glance/images/
 
-crudini --set /etc/glance/glance-registry.conf database connection mysql+pymysql://glance:$GLANCE_DBPASS@$CONTROLLER_HOSTNAME/glance
-crudini --set /etc/glance/glance-registry.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/glance/glance-registry.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
-crudini --set /etc/glance/glance-registry.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
-crudini --set /etc/glance/glance-registry.conf keystone_authtoken auth_type password
-crudini --set /etc/glance/glance-registry.conf keystone_authtoken project_domain_name default
-crudini --set /etc/glance/glance-registry.conf keystone_authtoken user_domain_name default
-crudini --set /etc/glance/glance-registry.conf keystone_authtoken project_name service
-crudini --set /etc/glance/glance-registry.conf keystone_authtoken username glance
-crudini --set /etc/glance/glance-registry.conf keystone_authtoken password $GLANCE_PASS
-crudini --set /etc/glance/glance-registry.conf paste_deploy flavor keystone
-
 su -s /bin/sh -c "glance-manage db_sync" glance
 
-service glance-registry restart
 service glance-api restart
 
-# from Verify Operation https://docs.openstack.org/glance/pike/install/verify.html
+# from Verify Operation https://docs.openstack.org/glance/ussuri/install/verify.html
 
-wget http://download.cirros-cloud.net/0.3.5/cirros-0.3.5-x86_64-disk.img
+wget http://download.cirros-cloud.net/0.4.0/cirros-0.4.0-x86_64-disk.img
 
-openstack image create "cirros" --file cirros-0.3.5-x86_64-disk.img --disk-format qcow2 --container-format bare --public
+openstack image create "cirros" --file cirros-0.4.0-x86_64-disk.img --disk-format qcow2 --container-format bare --public
 
-# from Install and configure controller node for Ubuntu https://docs.openstack.org/nova/pike/install/controller-install-ubuntu.html
+# from Install and configure placement node for Ubuntu https://docs.openstack.org/placement/ussuri/install/install-ubuntu.html
+
+echo "Starting installation of Placement"
+
+mysql <<- EOF
+CREATE DATABASE placement;
+GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'localhost' IDENTIFIED BY '$PLACEMENT_DBPASS';
+GRANT ALL PRIVILEGES ON placement.* TO 'placement'@'%' IDENTIFIED BY '$PLACEMENT_DBPASS';
+EOF
+
+source admin-openrc
+
+openstack user create --domain default --password $PLACEMENT_PASS placement
+openstack role add --project service --user placement admin
+openstack service create --name placement --description "Placement API" placement
+openstack endpoint create --region RegionOne placement public http://$CONTROLLER_HOSTNAME:8778
+openstack endpoint create --region RegionOne placement internal http://$CONTROLLER_HOSTNAME:8778
+openstack endpoint create --region RegionOne placement admin http://$CONTROLLER_HOSTNAME:8778
+
+apt install -y placement-api
+
+crudini --set /etc/placement/placement.conf placement_database connection mysql+pymysql://placement:$PLACEMENT_DBPASS@$CONTROLLER_HOSTNAME/placement
+crudini --set /etc/placement/placement.conf api auth_strategy keystone
+crudini --set /etc/placement/placement.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000/v3
+crudini --set /etc/placement/placement.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
+crudini --set /etc/placement/placement.conf keystone_authtoken auth_type password
+crudini --set /etc/placement/placement.conf keystone_authtoken project_domain_name default
+crudini --set /etc/placement/placement.conf keystone_authtoken user_domain_name default
+crudini --set /etc/placement/placement.conf keystone_authtoken project_name service
+crudini --set /etc/placement/placement.conf keystone_authtoken username placement
+crudini --set /etc/placement/placement.conf keystone_authtoken password $PLACEMENT_PASS
+
+su -s /bin/sh -c "placement-manage db sync" placement
+service apache2 restart
+
+# from Install and configure controller node for Ubuntu https://docs.openstack.org/nova/ussuri/install/controller-install-ubuntu.html
 
 echo "Starting installation of Nova Controller"
 
@@ -224,21 +246,15 @@ openstack service create --name nova --description "OpenStack Compute" compute
 openstack endpoint create --region RegionOne compute public http://$CONTROLLER_HOSTNAME:8774/v2.1
 openstack endpoint create --region RegionOne compute internal http://$CONTROLLER_HOSTNAME:8774/v2.1
 openstack endpoint create --region RegionOne compute admin http://$CONTROLLER_HOSTNAME:8774/v2.1
-openstack user create --domain default --password $PLACEMENT_PASS placement
-openstack role add --project service --user placement admin
-openstack service create --name placement --description "Placement API" placement
-openstack endpoint create --region RegionOne placement public http://$CONTROLLER_HOSTNAME:8778
-openstack endpoint create --region RegionOne placement internal http://$CONTROLLER_HOSTNAME:8778
-openstack endpoint create --region RegionOne placement admin http://$CONTROLLER_HOSTNAME:8778
 
-apt install -y nova-api nova-conductor nova-consoleauth nova-novncproxy nova-scheduler nova-placement-api
+apt install -y nova-api nova-conductor nova-novncproxy nova-scheduler 
 
 crudini --set /etc/nova/nova.conf api_database connection mysql+pymysql://nova:$NOVA_DBPASS@$CONTROLLER_HOSTNAME/nova_api
 crudini --set /etc/nova/nova.conf database connection mysql+pymysql://nova:$NOVA_DBPASS@$CONTROLLER_HOSTNAME/nova
-crudini --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:$RABBIT_PASS@$CONTROLLER_HOSTNAME
+crudini --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:$RABBIT_PASS@$CONTROLLER_HOSTNAME:5672
 crudini --set /etc/nova/nova.conf api auth_strategy keystone
-crudini --set /etc/nova/nova.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/nova/nova.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/nova/nova.conf keystone_authtoken www_authenticate_uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/nova/nova.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/nova/nova.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/nova/nova.conf keystone_authtoken auth_type password
 crudini --set /etc/nova/nova.conf keystone_authtoken project_domain_name default
@@ -247,37 +263,35 @@ crudini --set /etc/nova/nova.conf keystone_authtoken project_name service
 crudini --set /etc/nova/nova.conf keystone_authtoken username nova
 crudini --set /etc/nova/nova.conf keystone_authtoken password $NOVA_PASS
 crudini --set /etc/nova/nova.conf DEFAULT my_ip $CONTROLLER_IP
-crudini --set /etc/nova/nova.conf DEFAULT use_neutron true
-crudini --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
+#crudini --set /etc/nova/nova.conf DEFAULT use_neutron true
+#crudini --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
 crudini --set /etc/nova/nova.conf vnc enabled true
 crudini --set /etc/nova/nova.conf vnc vncserver_listen $CONTROLLER_IP
 crudini --set /etc/nova/nova.conf vnc vncserver_proxyclient_address $CONTROLLER_IP
 crudini --set /etc/nova/nova.conf glance api_servers http://$CONTROLLER_HOSTNAME:9292
 crudini --set /etc/nova/nova.conf oslo_concurrency lock_path /var/lib/nova/tmp
-crudini --del /etc/nova/nova.conf DEFAULT log_dir
-crudini --set /etc/nova/nova.conf placement os_region_name RegionOne
-crudini --set /etc/nova/nova.conf placement project_domain_name Default
+#crudini --del /etc/nova/nova.conf DEFAULT log_dir
+crudini --set /etc/nova/nova.conf placement region_name RegionOne
+crudini --set /etc/nova/nova.conf placement project_domain_name default
 crudini --set /etc/nova/nova.conf placement project_name service
 crudini --set /etc/nova/nova.conf placement auth_type password
-crudini --set /etc/nova/nova.conf placement user_domain_name Default
-crudini --set /etc/nova/nova.conf placement auth_url http://$CONTROLLER_HOSTNAME:35357/v3
+crudini --set /etc/nova/nova.conf placement user_domain_name default
+crudini --set /etc/nova/nova.conf placement auth_url http://$CONTROLLER_HOSTNAME:5000/v3
 crudini --set /etc/nova/nova.conf placement username placement
 crudini --set /etc/nova/nova.conf placement password $PLACEMENT_PASS
 
 su -s /bin/sh -c "nova-manage api_db sync" nova
-
 su -s /bin/sh -c "nova-manage cell_v2 map_cell0" nova
 su -s /bin/sh -c "nova-manage cell_v2 create_cell --name=cell1 --verbose" nova
 su -s /bin/sh -c "nova-manage db sync" nova
-nova-manage cell_v2 list_cells
+su -s /bin/sh -c "nova-manage cell_v2 list_cells" nova
 
 service nova-api restart
-service nova-consoleauth restart
 service nova-scheduler restart
 service nova-conductor restart
 service nova-novncproxy restart
 
-# from Install and configure compute node for Ubuntu https://docs.openstack.org/nova/pike/install/compute-install-ubuntu.html
+# from Install and configure compute node for Ubuntu https://docs.openstack.org/nova/ussuri/install/compute-install-ubuntu.html
 
 echo "Starting Installation of Nova Compute"
 
@@ -285,8 +299,8 @@ apt install -y nova-compute
 
 crudini --set /etc/nova/nova.conf DEFAULT transport_url rabbit://openstack:$RABBIT_PASS@$CONTROLLER_HOSTNAME
 crudini --set /etc/nova/nova.conf api auth_strategy keystone
-crudini --set /etc/nova/nova.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/nova/nova.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/nova/nova.conf keystone_authtoken www_authenticate_uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/nova/nova.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/nova/nova.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/nova/nova.conf keystone_authtoken auth_type password
 crudini --set /etc/nova/nova.conf keystone_authtoken project_domain_name default
@@ -295,21 +309,21 @@ crudini --set /etc/nova/nova.conf keystone_authtoken project_name service
 crudini --set /etc/nova/nova.conf keystone_authtoken username nova
 crudini --set /etc/nova/nova.conf keystone_authtoken password $NOVA_PASS
 crudini --set /etc/nova/nova.conf DEFAULT my_ip $CONTROLLER_IP
-crudini --set /etc/nova/nova.conf DEFAULT use_neutron true
-crudini --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
+#crudini --set /etc/nova/nova.conf DEFAULT use_neutron true
+#crudini --set /etc/nova/nova.conf DEFAULT firewall_driver nova.virt.firewall.NoopFirewallDriver
 crudini --set /etc/nova/nova.conf vnc enabled true
 crudini --set /etc/nova/nova.conf vnc vncserver_listen 0.0.0.0
 crudini --set /etc/nova/nova.conf vnc vncserver_proxyclient_address $CONTROLLER_IP
 crudini --set /etc/nova/nova.conf vnc novncproxy_base_url $NOVNCPROXY_BASE_URL
 crudini --set /etc/nova/nova.conf glance api_servers http://$CONTROLLER_HOSTNAME:9292
 crudini --set /etc/nova/nova.conf oslo_concurrency lock_path /var/lib/nova/tmp
-crudini --del /etc/nova/nova.conf DEFAULT log_dir
-crudini --set /etc/nova/nova.conf placement os_region_name RegionOne
-crudini --set /etc/nova/nova.conf placement project_domain_name Default
+#crudini --del /etc/nova/nova.conf DEFAULT log_dir
+crudini --set /etc/nova/nova.conf placement region_name RegionOne
+crudini --set /etc/nova/nova.conf placement project_domain_name default
 crudini --set /etc/nova/nova.conf placement project_name service
 crudini --set /etc/nova/nova.conf placement auth_type password
-crudini --set /etc/nova/nova.conf placement user_domain_name Default
-crudini --set /etc/nova/nova.conf placement auth_url http://$CONTROLLER_HOSTNAME:35357/v3
+crudini --set /etc/nova/nova.conf placement user_domain_name default
+crudini --set /etc/nova/nova.conf placement auth_url http://$CONTROLLER_HOSTNAME:5000/v3
 crudini --set /etc/nova/nova.conf placement username placement
 crudini --set /etc/nova/nova.conf placement password $PLACEMENT_PASS
 
@@ -320,11 +334,9 @@ service nova-compute restart
 source admin-openrc
 su -s /bin/sh -c "nova-manage cell_v2 discover_hosts --verbose" nova
 echo "Executing openstack compute service list"
-openstack compute service list
-echo "Executing nova-status upgrade check"
-nova-status upgrade check
+openstack compute service list --service nova-compute
 
-# from Install and configure Neutron controller node https://docs.openstack.org/neutron/pike/install/controller-install-ubuntu.html
+# from Install and configure Neutron controller node https://docs.openstack.org/neutron/ussuri/install/controller-install-ubuntu.html
 
 echo "Starting installation of Neutron Controller"
 
@@ -351,8 +363,8 @@ crudini --set /etc/neutron/neutron.conf DEFAULT service_plugins router
 crudini --set /etc/neutron/neutron.conf DEFAULT allow_overlapping_ips true
 crudini --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:$RABBIT_PASS@$CONTROLLER_HOSTNAME
 crudini --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
-crudini --set /etc/neutron/neutron.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/neutron/neutron.conf keystone_authtoken www_authenticate_uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/neutron/neutron.conf keystone_authtoken auth_type password
 crudini --set /etc/neutron/neutron.conf keystone_authtoken project_domain_name default
@@ -362,7 +374,7 @@ crudini --set /etc/neutron/neutron.conf keystone_authtoken username neutron
 crudini --set /etc/neutron/neutron.conf keystone_authtoken password $NEUTRON_PASS
 crudini --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_status_changes true
 crudini --set /etc/neutron/neutron.conf DEFAULT notify_nova_on_port_data_changes true
-crudini --set /etc/neutron/neutron.conf nova auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/neutron/neutron.conf nova auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/neutron/neutron.conf nova auth_type password
 crudini --set /etc/neutron/neutron.conf nova project_domain_name default
 crudini --set /etc/neutron/neutron.conf nova user_domain_name default
@@ -370,6 +382,7 @@ crudini --set /etc/neutron/neutron.conf nova region_name RegionOne
 crudini --set /etc/neutron/neutron.conf nova project_name service
 crudini --set /etc/neutron/neutron.conf nova username nova
 crudini --set /etc/neutron/neutron.conf nova password $NOVA_PASS
+crudini --set /etc/neutron/neutron.conf oslo_concurrency lock_path /var/lib/nova/tmp
 
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 type_drivers "flat,vlan,vxlan"
 crudini --set /etc/neutron/plugins/ml2/ml2_conf.ini ml2 tenant_network_types vxlan
@@ -395,8 +408,7 @@ crudini --set /etc/neutron/dhcp_agent.ini DEFAULT enable_isolated_metadata true
 crudini --set /etc/neutron/metadata_agent.ini DEFAULT nova_metadata_host $CONTROLLER_HOSTNAME
 crudini --set /etc/neutron/metadata_agent.ini DEFAULT metadata_proxy_shared_secret $METADATA_SECRET
 
-crudini --set /etc/nova/nova.conf neutron url http://$CONTROLLER_HOSTNAME:9696
-crudini --set /etc/nova/nova.conf neutron auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/nova/nova.conf neutron auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/nova/nova.conf neutron auth_type password
 crudini --set /etc/nova/nova.conf neutron project_domain_name default
 crudini --set /etc/nova/nova.conf neutron user_domain_name default
@@ -415,7 +427,7 @@ service neutron-dhcp-agent restart
 service neutron-metadata-agent restart
 service neutron-l3-agent restart
 
-# from Install and configure (Neutron) compute node https://docs.openstack.org/neutron/pike/install/compute-install-ubuntu.html
+# from Install and configure (Neutron) compute node https://docs.openstack.org/neutron/ussuri/install/compute-install-ubuntu.html
 
 echo "Starting installation of Neutron Compute Node"
 
@@ -423,8 +435,8 @@ apt install -y neutron-linuxbridge-agent
 
 crudini --set /etc/neutron/neutron.conf DEFAULT transport_url rabbit://openstack:$RABBIT_PASS@$CONTROLLER_HOSTNAME
 crudini --set /etc/neutron/neutron.conf DEFAULT auth_strategy keystone
-crudini --set /etc/neutron/neutron.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/neutron/neutron.conf keystone_authtoken www_authenticate_uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/neutron/neutron.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/neutron/neutron.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/neutron/neutron.conf keystone_authtoken auth_type password
 crudini --set /etc/neutron/neutron.conf keystone_authtoken project_domain_name default
@@ -440,8 +452,7 @@ crudini --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini vxlan l2_population
 crudini --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup enable_security_group true
 crudini --set /etc/neutron/plugins/ml2/linuxbridge_agent.ini securitygroup firewall_driver neutron.agent.linux.iptables_firewall.IptablesFirewallDriver
 
-crudini --set /etc/nova/nova.conf neutron url http://$CONTROLLER_HOSTNAME:9696
-crudini --set /etc/nova/nova.conf neutron auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/nova/nova.conf neutron auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/nova/nova.conf neutron auth_type password
 crudini --set /etc/nova/nova.conf neutron project_domain_name default
 crudini --set /etc/nova/nova.conf neutron user_domain_name default
@@ -457,7 +468,7 @@ echo "Executing openstack network agent list"
 source admin-openrc
 openstack network agent list
 
-# from Swift - Install and configure controller node for Ubuntu https://docs.openstack.org/swift/pike/install/controller-install-ubuntu.html
+# from Swift - Install and configure controller node for Ubuntu https://docs.openstack.org/swift/ussuri/install/controller-install-ubuntu.html
 
 echo "Starting Swift Controller installation"
 
@@ -472,7 +483,7 @@ openstack endpoint create --region RegionOne object-store admin http://$CONTROLL
 apt-get install -y swift swift-proxy python-swiftclient python-keystoneclient python-keystonemiddleware memcached
 
 mkdir -p /etc/swift
-curl -o /etc/swift/proxy-server.conf https://git.openstack.org/cgit/openstack/swift/plain/etc/proxy-server.conf-sample?h=stable/pike
+curl -o /etc/swift/proxy-server.conf https://opendev.org/openstack/swift/raw/branch/master/etc/proxy-server.conf-sample
 
 crudini --set /etc/swift/proxy-server.conf DEFAULT bind_port 8080
 crudini --set /etc/swift/proxy-server.conf DEFAULT user swift
@@ -483,8 +494,8 @@ crudini --set /etc/swift/proxy-server.conf app:proxy-server account_autocreate t
 crudini --set /etc/swift/proxy-server.conf filter:keystoneauth use "egg:swift#keystoneauth"
 crudini --set /etc/swift/proxy-server.conf filter:keystoneauth operator_roles "admin,user"
 crudini --set /etc/swift/proxy-server.conf filter:authtoken paste.filter_factory "keystonemiddleware.auth_token:filter_factory"
-crudini --set /etc/swift/proxy-server.conf filter:authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/swift/proxy-server.conf filter:authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/swift/proxy-server.conf filter:authtoken www_authenticate_uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/swift/proxy-server.conf filter:authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/swift/proxy-server.conf filter:authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/swift/proxy-server.conf filter:authtoken auth_type password
 crudini --set /etc/swift/proxy-server.conf filter:authtoken project_domain_id default
@@ -496,7 +507,7 @@ crudini --set /etc/swift/proxy-server.conf filter:authtoken delay_auth_decision 
 crudini --set /etc/swift/proxy-server.conf filter:cache use "egg:swift#memcache"
 crudini --set /etc/swift/proxy-server.conf filter:cache memcache_servers $CONTROLLER_HOSTNAME:11211
 
-# from Swift Install and configure the storage node for Ubuntu https://docs.openstack.org/swift/pike/install/storage-install-ubuntu-debian.html
+# from Swift Install and configure the storage node for Ubuntu https://docs.openstack.org/swift/ussuri/install/storage-install-ubuntu-debian.html
 
 echo "Starting Swift Install Storage Node"
 
@@ -547,9 +558,9 @@ service rsync start
 
 apt-get install -y swift swift-account swift-container swift-object
 
-curl -o /etc/swift/account-server.conf https://git.openstack.org/cgit/openstack/swift/plain/etc/account-server.conf-sample?h=stable/pike
-curl -o /etc/swift/container-server.conf https://git.openstack.org/cgit/openstack/swift/plain/etc/container-server.conf-sample?h=stable/pike
-curl -o /etc/swift/object-server.conf https://git.openstack.org/cgit/openstack/swift/plain/etc/object-server.conf-sample?h=stable/pike
+curl -o /etc/swift/account-server.conf https://opendev.org/openstack/swift/raw/branch/master/etc/account-server.conf-sample
+curl -o /etc/swift/container-server.conf https://opendev.org/openstack/swift/raw/branch/master/etc/container-server.conf-sample
+curl -o /etc/swift/object-server.conf https://opendev.org/openstack/swift/raw/branch/master/etc/object-server.conf-sample
 
 crudini --set /etc/swift/account-server.conf DEAFULT bind_ip $CONTROLLER_IP
 crudini --set /etc/swift/account-server.conf DEAFULT bind_port 6202
@@ -585,7 +596,7 @@ mkdir -p /var/cache/swift
 chown -R root:swift /var/cache/swift
 chmod -R 775 /var/cache/swift
 
-# from Create and distribute initial rings https://docs.openstack.org/swift/pike/install/initial-rings.html
+# from Create and distribute initial rings https://docs.openstack.org/swift/ussuri/install/initial-rings.html
 
 echo "Starting Create and distribute initial rings"
 cd /etc/swift
@@ -613,10 +624,10 @@ swift-ring-builder object.builder
 echo "Executing swift-ring-builder object.builder rebalance"
 swift-ring-builder object.builder rebalance
 
-# from Swift Finalize installation for Ubuntu https://docs.openstack.org/swift/pike/install/finalize-installation-ubuntu-debian.html
+# from Swift Finalize installation for Ubuntu https://docs.openstack.org/swift/ussuri/install/finalize-installation-ubuntu-debian.html
 
 echo "Finalizing Swift installation"
-curl -o /etc/swift/swift.conf https://git.openstack.org/cgit/openstack/swift/plain/etc/swift.conf-sample?h=stable/pike
+curl -o /etc/swift/swift.conf https://opendev.org/openstack/swift/raw/branch/master/etc/swift.conf-sample
 crudini --set /etc/swift/swift.conf swift-hash swift_hash_path_prefix Open
 crudini --set /etc/swift/swift.conf swift-hash swift_hash_path_suffix Stack
 crudini --set /etc/swift/swift.conf storage-policy:0 name Policy-0
@@ -628,7 +639,7 @@ service memcached restart
 service swift-proxy restart
 swift-init all start
 
-# Create second Swift policy for Course exercises, from https://docs.openstack.org/swift/pike/overview_policies.html
+# Create second Swift policy for Course exercises, from https://docs.openstack.org/swift/ussuri/overview_policies.html
 
 echo "Starting to create second Swift Policy"
 crudini --set /etc/swift/swift.conf storage-policy:1 name silver
@@ -641,7 +652,7 @@ swift-ring-builder object-1.builder
 echo "Executing swift-ring-builder object-1.builder rebalance"
 swift-ring-builder object-1.builder rebalance
 
-# from Cinder Install and configure a storage node https://docs.openstack.org/cinder/pike/install/cinder-storage-install-ubuntu.html
+# from Cinder Install and configure a storage node https://docs.openstack.org/cinder/ussuri/install/cinder-storage-install-ubuntu.html
 
 echo "Starting installation of Cinder Storage Node"
 apt install -y lvm2 thin-provisioning-tools
@@ -667,8 +678,8 @@ crudini --set /etc/cinder/cinder.conf DEFAULT my_ip $CONTROLLER_IP
 crudini --set /etc/cinder/cinder.conf DEFAULT enabled_backends "lvm, lvm-2"
 crudini --set /etc/cinder/cinder.conf DEFAULT glance_api_servers http://$CONTROLLER_HOSTNAME:9292
 crudini --set /etc/cinder/cinder.conf oslo_concurrency lock_path /var/lib/cinder/tmp
-crudini --set /etc/cinder/cinder.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/cinder/cinder.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/cinder/cinder.conf keystone_authtoken www_authenticate_uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/cinder/cinder.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/cinder/cinder.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/cinder/cinder.conf keystone_authtoken auth_type password
 crudini --set /etc/cinder/cinder.conf keystone_authtoken project_domain_name default
@@ -690,7 +701,7 @@ crudini --set /etc/cinder/cinder.conf lvm-2 volume_backend_name LVM-2
 service tgt restart
 service cinder-volume restart
 
-# from Cinder Install and configure controller node https://docs.openstack.org/cinder/pike/install/cinder-controller-install-ubuntu.html
+# from Cinder Install and configure controller node https://docs.openstack.org/cinder/ussuri/install/cinder-controller-install-ubuntu.html
 
 echo "Starting installation of Cinder Controller Node"
 mysql <<- EOF
@@ -718,11 +729,11 @@ crudini --set /etc/cinder/cinder.conf database connection mysql+pymysql://cinder
 crudini --set /etc/cinder/cinder.conf DEFAULT transport_url rabbit://openstack:$RABBIT_PASS@$CONTROLLER_HOSTNAME
 crudini --set /etc/cinder/cinder.conf DEFAULT auth_strategy keystone
 crudini --set /etc/cinder/cinder.conf DEFAULT my_ip $CONTROLLER_IP
-crudini --set /etc/cinder/cinder.conf DEFAULT enabled_backends "lvm,lvm-2"
-crudini --set /etc/cinder/cinder.conf DEFAULT glance_api_servers http://$CONTROLLER_HOSTNAME:9292
+#crudini --set /etc/cinder/cinder.conf DEFAULT enabled_backends "lvm,lvm-2"
+#crudini --set /etc/cinder/cinder.conf DEFAULT glance_api_servers http://$CONTROLLER_HOSTNAME:9292
 crudini --set /etc/cinder/cinder.conf oslo_concurrency lock_path /var/lib/cinder/tmp
-crudini --set /etc/cinder/cinder.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/cinder/cinder.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/cinder/cinder.conf keystone_authtoken www_authenticate_uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/cinder/cinder.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/cinder/cinder.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/cinder/cinder.conf keystone_authtoken auth_type password
 crudini --set /etc/cinder/cinder.conf keystone_authtoken project_domain_name default
@@ -739,17 +750,17 @@ service nova-api restart
 service cinder-scheduler restart
 service apache2 restart
 
-# from Cinder Install and configure the backup service https://docs.openstack.org/cinder/pike/install/cinder-backup-install-ubuntu.html
+# from Cinder Install and configure the backup service https://docs.openstack.org/cinder/ussuri/install/cinder-backup-install-ubuntu.html
 
 echo "Starting installation of Cinder Backup Service"
 apt install -y cinder-backup
-crudini --set /etc/cinder/cinder.conf DEFAULT backup_driver cinder.backup.drivers.swift
+crudini --set /etc/cinder/cinder.conf DEFAULT backup_driver cinder.backup.drivers.swift.SwiftBackupDriver
 crudini --set /etc/cinder/cinder.conf DEFAULT backup_swift_url http://$CONTROLLER_HOSTNAME:8080/v1/AUTH_
 
 service cinder-backup restart
 service cinder-volume restart
 
-# from Heat Install and configure for Ubuntu https://docs.openstack.org/heat/pike/install/install-ubuntu.html
+# from Heat Install and configure for Ubuntu https://docs.openstack.org/heat/ussuri/install/install-ubuntu.html
 
 echo "Starting Heat Install and Configure"
 mysql <<- EOF
@@ -775,11 +786,12 @@ openstack role add --domain heat --user-domain heat --user heat_domain_admin adm
 openstack role create heat_stack_owner
 openstack role add --project demo --user demo heat_stack_owner
 openstack role create heat_stack_user
+
 apt-get install -y heat-api heat-api-cfn heat-engine
 crudini --set /etc/heat/heat.conf database connection mysql+pymysql://heat:$HEAT_DBPASS@$CONTROLLER_HOSTNAME/heat
 crudini --set /etc/heat/heat.conf DEFAULT transport_url rabbit://openstack:$RABBIT_PASS@$CONTROLLER_HOSTNAME
-crudini --set /etc/heat/heat.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/heat/heat.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/heat/heat.conf keystone_authtoken www_authenticate_uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/heat/heat.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/heat/heat.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/heat/heat.conf keystone_authtoken auth_type password
 crudini --set /etc/heat/heat.conf keystone_authtoken project_domain_name default
@@ -788,11 +800,11 @@ crudini --set /etc/heat/heat.conf keystone_authtoken project_name service
 crudini --set /etc/heat/heat.conf keystone_authtoken username heat
 crudini --set /etc/heat/heat.conf keystone_authtoken password $HEAT_PASS
 crudini --set /etc/heat/heat.conf trustee auth_type password
-crudini --set /etc/heat/heat.conf trustee auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/heat/heat.conf trustee auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/heat/heat.conf trustee username heat
 crudini --set /etc/heat/heat.conf trustee password $HEAT_PASS
 crudini --set /etc/heat/heat.conf trustee user_domain_name default
-crudini --set /etc/heat/heat.conf clients_keystone auth_uri http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/heat/heat.conf clients_keystone auth_uri http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/heat/heat.conf ec2authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000/v3
 crudini --set /etc/heat/heat.conf DEFAULT heat_metadata_server_url http://$CONTROLLER_HOSTNAME:8000
 crudini --set /etc/heat/heat.conf DEFAULT heat_waitcondition_server_url http://$CONTROLLER_HOSTNAME:8000/v1/waitcondition
@@ -804,7 +816,7 @@ service heat-api restart
 service heat-api-cfn restart
 service heat-engine restart
 
-# from Barbican Install for Ubuntu https://docs.openstack.org/barbican/pike/install/install-ubuntu.html
+# from Barbican Install for Ubuntu https://docs.openstack.org/barbican/ussuri/install/install-ubuntu.html
 
 echo "Startring Barbican Installation"
 mysql <<- EOF
@@ -826,8 +838,8 @@ apt-get install -y barbican-api barbican-keystone-listener barbican-worker
 crudini --set /etc/barbican/barbican.conf DEFAULT sql_connection mysql+pymysql://barbican:$BARBICAN_DBPASS@$CONTROLLER_HOSTNAME/barbican
 crudini --set /etc/barbican/barbican.conf DEFAULT transport_url rabbit://openstack:$RABBIT_PASS@$CONTROLLER_HOSTNAME
 crudini --set /etc/barbican/barbican.conf DEFAULT db_auto_create False
-crudini --set /etc/barbican/barbican.conf keystone_authtoken auth_uri http://$CONTROLLER_HOSTNAME:5000
-crudini --set /etc/barbican/barbican.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:35357
+crudini --set /etc/barbican/barbican.conf keystone_authtoken www_authenticate__uri http://$CONTROLLER_HOSTNAME:5000
+crudini --set /etc/barbican/barbican.conf keystone_authtoken auth_url http://$CONTROLLER_HOSTNAME:5000
 crudini --set /etc/barbican/barbican.conf keystone_authtoken memcached_servers $CONTROLLER_HOSTNAME:11211
 crudini --set /etc/barbican/barbican.conf keystone_authtoken auth_type password
 crudini --set /etc/barbican/barbican.conf keystone_authtoken project_domain_name default
@@ -837,24 +849,28 @@ crudini --set /etc/barbican/barbican.conf keystone_authtoken username barbican
 crudini --set /etc/barbican/barbican.conf keystone_authtoken password $BARBICAN_PASS
 su -s /bin/sh -c "barbican-manage db upgrade" barbican
 
-# from Barbican Secret Store Back-ends https://docs.openstack.org/barbican/pike/install/barbican-backend.html#barbican-backend
+# from Barbican Secret Store Back-ends https://docs.openstack.org/barbican/ussuri/install/barbican-backend.html#barbican-backend
 crudini --set /etc/barbican/barbican.conf secretstore namespace barbican.secretstore.plugin
 crudini --set /etc/barbican/barbican.conf secretstore enabled_secretstore_plugins store_crypto
 crudini --set /etc/barbican/barbican.conf crypto enabled_crypto_plugins simple_crypto
 crudini --set /etc/barbican/barbican.conf simple_crypto_plugin kek "'YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY='"
+
 service barbican-keystone-listener restart
 service barbican-worker restart
 service apache2 restart
 
-# from Cinder Volume encryption supported by the key manager https://docs.openstack.org/cinder/pike/configuration/block-storage/volume-encryption.html
+# from Cinder Volume encryption supported by the key manager https://docs.openstack.org/cinder/ussuri/configuration/block-storage/volume-encryption.html
 crudini --set /etc/nova/nova.conf key_manager backend barbican
 crudini --set /etc/nova/nova.conf barbican barbican_endpoint http://$CONTROLLER_HOSTNAME:9311/
 crudini --set /etc/nova/nova.conf barbican auth_endpoint http://$CONTROLLER_HOSTNAME:5000/v3
 crudini --set /etc/cinder/cinder.conf key_manager backend barbican
 crudini --set /etc/cinder/cinder.conf barbican barbican_endpoint http://$CONTROLLER_HOSTNAME:9311/
 crudini --set /etc/cinder/cinder.conf barbican auth_endpoint http://$CONTROLLER_HOSTNAME:5000/v3
+
+source admin-openrc
 openstack role add --project demo --user demo creator
 service cinder-scheduler restart
+service cinder-api restart
 service nova-compute restart
 service apache2 restart
 
@@ -864,15 +880,15 @@ echo "Starting Horizon Installation"
 apt install -y openstack-dashboard
 # Horizon is accessed from Host system via http://localhost:8080/horizon/, so we keep OPENSTACK_HOSTS="127.0.0.1" - this is the reason of not executing line below
 #sed -i "s/127.0.0.1/$CONTROLLER_IP/g" /etc/openstack-dashboard/local_settings.py
-sed -i "/^OPENSTACK_KEYSTONE_URL/s/v2.0/v3/" /etc/openstack-dashboard/local_settings.py
+sed -i "/^OPENSTACK_KEYSTONE_URL/s/\/identity/:5000/" /etc/openstack-dashboard/local_settings.py
 sed -i "/^CACHES =/i SESSION_ENGINE = 'django.contrib.sessions.backends.cache'" /etc/openstack-dashboard/local_settings.py
 rpl "127.0.0.1:11211" "$CONTROLLER_IP:11211" /etc/openstack-dashboard/local_settings.py
-sed -i "/^#OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT/i OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True" /etc/openstack-dashboard/local_settings.py
-sed -i '/^#OPENSTACK_API_VERSIONS =/i OPENSTACK_API_VERSIONS = { "identity": 3 ,"image": 2 ,"volume": 2, }' /etc/openstack-dashboard/local_settings.py
-sed -i "s/^#OPENSTACK_KEYSTONE_DEFAULT_DOMAIN/OPENSTACK_KEYSTONE_DEFAULT_DOMAIN/" /etc/openstack-dashboard/local_settings.py
-sed -i "s/_member_/user/" /etc/openstack-dashboard/local_settings.py
+echo "OPENSTACK_KEYSTONE_MULTIDOMAIN_SUPPORT = True" >> /etc/openstack-dashboard/local_settings.py
+echo 'OPENSTACK_API_VERSIONS = { "identity": 3, "image": 2, "volume": 2, }' >> /etc/openstack-dashboard/local_settings.py
+echo 'OPENSTACK_KEYSTONE_DEFAULT_DOMAIN = "default"' >> /etc/openstack-dashboard/local_settings.py
+echo 'OPENSTACK_KEYSTONE_DEFAULT_ROLE = "user"' >> /etc/openstack-dashboard/local_settings.py
 # Extra, undocumented line to enable Volume Backup option in Horizon
-sed -i "s/'enable_backup': False/'enable_backup': True/" /etc/openstack-dashboard/local_settings.py
+#---> sed -i "s/'enable_backup': False/'enable_backup': True/" /etc/openstack-dashboard/local_settings.py
 # Let's change Horizon theme from Ubuntu to default
 sed -i "/^DEFAULT_THEME/s/ubuntu/default/" /etc/openstack-dashboard/local_settings.py
 grep -q 'WSGIApplicationGroup %{GLOBAL}' /etc/apache2/conf-available/openstack-dashboard.conf || sed -i '/^WSGIProcessGroup/a WSGIApplicationGroup %{GLOBAL}' /etc/apache2/conf-available/openstack-dashboard.conf
