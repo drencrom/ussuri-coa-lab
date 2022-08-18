@@ -107,7 +107,7 @@ crudini --set /etc/keystone/keystone.conf token provider fernet
 su -s /bin/sh -c "keystone-manage db_sync" keystone
 keystone-manage fernet_setup --keystone-user keystone --keystone-group keystone
 keystone-manage credential_setup --keystone-user keystone --keystone-group keystone
-keystone-manage bootstrap --bootstrap-password $ADMIN_PASS --bootstrap-admin-url http://$CONTROLLER_HOSTNAME:35357/v3/ --bootstrap-internal-url http://$CONTROLLER_HOSTNAME:5000/v3/ --bootstrap-public-url http://$CONTROLLER_HOSTNAME:5000/v3/ --bootstrap-region-id RegionOne
+keystone-manage bootstrap --bootstrap-password $ADMIN_PASS --bootstrap-admin-url http://$CONTROLLER_HOSTNAME:5000/v3/ --bootstrap-internal-url http://$CONTROLLER_HOSTNAME:5000/v3/ --bootstrap-public-url http://$CONTROLLER_HOSTNAME:5000/v3/ --bootstrap-region-id RegionOne
 service apache2 restart
 
 cat <<- EOF >> admin-openrc
@@ -480,7 +480,7 @@ openstack endpoint create --region RegionOne object-store public http://$CONTROL
 openstack endpoint create --region RegionOne object-store internal http://$CONTROLLER_HOSTNAME:8080/v1/AUTH_%\(project_id\)s
 openstack endpoint create --region RegionOne object-store admin http://$CONTROLLER_HOSTNAME:8080/v1
 
-apt-get install -y swift swift-proxy python-swiftclient python-keystoneclient python-keystonemiddleware memcached
+apt-get install -y swift swift-proxy python3-swiftclient python3-keystoneclient python3-keystonemiddleware memcached
 
 mkdir -p /etc/swift
 curl -o /etc/swift/proxy-server.conf https://opendev.org/openstack/swift/raw/branch/master/etc/proxy-server.conf-sample
@@ -520,8 +520,8 @@ mkdir -p /srv/node/$SWIFT_DEV_1_1
 mkdir -p /srv/node/$SWIFT_DEV_1_2
 
 cat <<- EOF >> /etc/fstab
-/dev/$SWIFT_DEV_1_1 /srv/node/$SWIFT_DEV_1_1 xfs noatime,nodiratime,nobarrier,logbufs=8 0 2
-/dev/$SWIFT_DEV_1_2 /srv/node/$SWIFT_DEV_1_2 xfs noatime,nodiratime,nobarrier,logbufs=8 0 2
+/dev/$SWIFT_DEV_1_1 /srv/node/$SWIFT_DEV_1_1 xfs noatime,nodiratime,logbufs=8 0 2
+/dev/$SWIFT_DEV_1_2 /srv/node/$SWIFT_DEV_1_2 xfs noatime,nodiratime,logbufs=8 0 2
 EOF
 
 mount /srv/node/$SWIFT_DEV_1_1
