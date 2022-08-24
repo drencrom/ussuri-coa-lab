@@ -9,6 +9,8 @@ export LC_TYPE="UTF-8"
 export LANG="en-US.UTF-8"
 export LC_ALL="C"
 
+apt remove -y multipath-tools
+
 # Set all Global Variables, defined in vars.sh
 cp /vagrant/vars.sh /home/vagrant
 cp /vagrant/install-openstack.sh /home/vagrant
@@ -42,6 +44,8 @@ network:
     version: 2
     renderer: networkd
 EOF
+
+sed -i "s/scan_lvs = 0/scan_lvs = 1/" /etc/lvm/lvm.conf
 
 pvcreate /dev/sdc
 vgcreate os-data /dev/sdc
