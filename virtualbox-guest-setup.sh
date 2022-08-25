@@ -30,17 +30,14 @@ cat <<- EOF > /etc/netplan/50-cloud-init.yaml
 network:
     ethernets:
         $INTERNET_INTERFACE_NAME:
-            match:
-                name: "eth0"
-            set-name: "$INTERNET_INTERFACE_NAME"
             dhcp4: true
-            addresses:
-                - $CONTROLLER_IP/$CONTROLLER_NETMASK_LEN:
-                    label: "$MANAGEMENT_INTERFACE_NAME"
-            nameservers:
-                addresses: [$CONTROLLER_NAMESERVERS]
         $PROVIDER_INTERFACE_NAME:
             dhcp4: false
+        $MANAGEMENT_INTERFACE_NAME:
+            addresses:
+                - $CONTROLLER_IP/$CONTROLLER_NETMASK_LEN
+            nameservers:
+                addresses: [$CONTROLLER_NAMESERVERS]
     version: 2
     renderer: networkd
 EOF

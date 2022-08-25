@@ -25,6 +25,7 @@ Vagrant.configure("2") do |config|
 #        vb.gui = true
         vb.customize ["modifyvm", :id, "--memory", machine[:ram], "--cpus", machine[:cpu]]
         vb.customize ["modifyvm", :id, "--nic2", "natnetwork", "--nat-network2", "ProviderNetwork", "--nicpromisc2", "allow-all"]
+        vb.customize ["modifyvm", :id, "--nic3", "nat"]
         controller_name = 'SCSI'
         file_to_disk = File.realpath( "." ).to_s + '/openstack_data.vdi'
         vb.customize ['createhd', '--filename', file_to_disk, '--size', 50 * 1024, '--format', 'VDI']
