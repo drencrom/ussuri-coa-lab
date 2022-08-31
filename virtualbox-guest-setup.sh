@@ -9,7 +9,11 @@ export LC_TYPE="UTF-8"
 export LANG="en-US.UTF-8"
 export LC_ALL="C"
 
-apt remove -y multipath-tools
+cat <<- EOF >> /etc/multipath.conf
+blacklist {
+    devnode "^(sda|sdb|sdc)[0-9]*"
+}
+EOF
 
 # Set all Global Variables, defined in vars.sh
 cp /vagrant/vars.sh /home/vagrant

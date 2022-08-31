@@ -870,7 +870,7 @@ crudini --set /etc/cinder/cinder.conf barbican auth_endpoint http://$CONTROLLER_
 source admin-openrc
 openstack role add --project demo --user demo creator
 service cinder-scheduler restart
-service cinder-api restart
+#service cinder-api restart
 service nova-compute restart
 service apache2 restart
 

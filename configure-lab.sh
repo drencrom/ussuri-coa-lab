@@ -73,3 +73,6 @@ openstack security group rule create --protocol tcp --dst-port "22:22" --etherty
 
 # Create keypair demo_kp in demo Project
 openstack keypair create demo_kp > demo_kp.pem
+
+# To prevent cinder errors
+systemctl start iscsid
